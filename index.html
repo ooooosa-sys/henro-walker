@@ -6,11 +6,11 @@
   <meta name="theme-color" content="#ffffff" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
-  <meta name="apple-mobile-web-app-title" content="仮想お遍路" />
+  <meta name="apple-mobile-web-app-title" content="Henro Walker" />
   <link rel="manifest" href="manifest.json" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <link rel="apple-touch-icon" href="icons/icon-192.png" />
-  <title>仮想お遍路 — 四国八十八ヶ所</title>
+  <title>Henro Walker — 四国八十八ヶ所</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -123,6 +123,20 @@
       -webkit-tap-highlight-color: transparent;
     }
     button:active { background: var(--surface); }
+
+    .date-row {
+      display: flex; align-items: center;
+      padding: 0 16px 10px; gap: 8px;
+    }
+    .date-label { font-size: 12px; color: var(--muted); white-space: nowrap; }
+    input[type="date"] {
+      height: 36px; border-radius: var(--radius);
+      border: 0.5px solid var(--border); background: white;
+      padding: 0 10px; font-size: 13px; font-family: var(--font);
+      color: var(--text); outline: none;
+    }
+    input[type="date"]:focus { border-color: var(--accent); }
+
     .note {
       text-align: center; font-size: 10px; color: var(--muted);
       padding: 0 16px 8px;
@@ -186,29 +200,104 @@
     .reset-btn:active { opacity: 1; }
 
     .henro-current { background: none; border: none; }
-    .henro-current .dot {
-      width: 12px; height: 12px; background: #e24b4a;
-      border-radius: 50%; border: 2px solid white;
-      box-shadow: 0 1px 4px rgba(0,0,0,0.3);
-      position: absolute; top: 50%; left: 50%;
-      transform: translate(-50%, -50%);
+    .henro-current svg { animation: hpulse 2.5s ease infinite; transform-origin: center; }
+    @keyframes hpulse {
+      0%, 100% { transform: scale(1); opacity: 1; }
+      50%       { transform: scale(1.15); opacity: 0.75; }
     }
-    .henro-current .ring {
-      width: 24px; height: 24px; border-radius: 50%;
-      background: rgba(226,75,74,0.25);
-      position: absolute; top: 0; left: 0;
-      animation: pulse 2s ease infinite;
+
+    /* === スタート画面 === */
+    .start-overlay {
+      position: fixed; inset: 0;
+      background: var(--bg);
+      display: none; /* JS で必要な時だけ表示 */
+      align-items: center; justify-content: center;
+      z-index: 9999;
+      transition: opacity 0.4s;
     }
-    @keyframes pulse {
-      0%, 100% { transform: scale(1); opacity: 0.4; }
-      50% { transform: scale(1.5); opacity: 0.1; }
+    .start-overlay.show { display: flex; }
+    .start-overlay.hide { opacity: 0; pointer-events: none; }
+    .start-content {
+      display: flex; flex-direction: column; align-items: center;
+      gap: 12px; text-align: center; padding: 0 32px;
     }
+    .start-title { font-size: 26px; font-weight: 700; letter-spacing: -0.03em; margin-top: 8px; }
+    .start-subtitle { font-size: 13px; color: var(--muted); line-height: 1.8; }
+    .start-btn {
+      margin-top: 24px; height: 50px; padding: 0 40px;
+      background: #c0392b; color: white;
+      border: none; border-radius: 25px;
+      font-size: 15px; font-weight: 700; font-family: var(--font);
+      cursor: pointer; letter-spacing: 0.04em;
+      -webkit-tap-highlight-color: transparent;
+      box-shadow: 0 4px 20px rgba(192,57,43,0.28);
+    }
+    .start-btn:active { opacity: 0.82; }
+
+    /* === 到着モーダル === */
+    .arrival-overlay {
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,0.52);
+      display: flex; align-items: center; justify-content: center;
+      z-index: 9000; padding: 20px;
+      opacity: 0; pointer-events: none;
+      transition: opacity 0.25s;
+    }
+    .arrival-overlay.show { opacity: 1; pointer-events: auto; }
+    .arrival-card {
+      background: white; border-radius: 18px;
+      width: 100%; max-width: 320px;
+      overflow: hidden;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.28);
+      transform: scale(0.88) translateY(24px);
+      transition: transform 0.35s cubic-bezier(0.34,1.56,0.64,1);
+    }
+    .arrival-overlay.show .arrival-card { transform: scale(1) translateY(0); }
+    .arrival-photo-wrap {
+      width: 100%; aspect-ratio: 4/3;
+      background: var(--surface);
+      position: relative; overflow: hidden;
+    }
+    .arrival-photo-state {
+      position: absolute; inset: 0;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 11px; color: var(--muted); flex-direction: column; gap: 8px;
+    }
+    #arrival-photo-img {
+      position: absolute; inset: 0;
+      width: 100%; height: 100%; object-fit: cover; display: none;
+    }
+    .arrival-card-bar {
+      position: absolute; top: 0; left: 0; right: 0;
+      display: flex; justify-content: space-between; align-items: flex-start;
+      padding: 10px; z-index: 10;
+      background: linear-gradient(to bottom, rgba(0,0,0,0.38), transparent);
+    }
+    .arrival-badge {
+      font-size: 10px; font-weight: 700; letter-spacing: 0.05em;
+      color: white; background: #c0392b;
+      padding: 3px 9px; border-radius: 20px;
+    }
+    .arrival-close {
+      width: 26px; height: 26px; border-radius: 50%;
+      background: rgba(0,0,0,0.38); border: none; cursor: pointer;
+      font-size: 13px; color: white;
+      display: flex; align-items: center; justify-content: center;
+      padding: 0; line-height: 1;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .arrival-info { padding: 14px 16px 12px; }
+    .arrival-num { font-size: 11px; font-weight: 700; letter-spacing: 0.06em; margin-bottom: 2px; }
+    .arrival-name { font-size: 22px; font-weight: 700; letter-spacing: -0.02em; margin-bottom: 3px; }
+    .arrival-sub { font-size: 11px; color: var(--muted); }
+    .arrival-wiki { font-size: 9px; color: var(--muted); padding: 0 16px 10px; opacity: 0.5; }
+    .arrival-wiki a { color: var(--muted); text-decoration: none; }
   </style>
 </head>
 <body>
 
 <header>
-  <h1>仮想お遍路</h1>
+  <h1>Henro Walker</h1>
   <span>四国八十八ヶ所 巡礼ウォーカー</span>
 </header>
 
@@ -250,6 +339,10 @@
   <input type="number" id="inp" placeholder="歩数を入力..." min="0" inputmode="numeric" />
   <button onclick="addManual()">追加</button>
 </div>
+<div class="date-row">
+  <span class="date-label">日付：</span>
+  <input type="date" id="inp-date" />
+</div>
 
 <div class="history-wrap">
   <div class="history-header">入力履歴</div>
@@ -262,7 +355,48 @@
   <button class="reset-btn" onclick="resetAll()">記録をすべてリセット</button>
 </div>
 
+<!-- お遍路スタート画面 -->
+<div id="start-overlay" class="start-overlay">
+  <div class="start-content">
+    <svg width="72" height="72" viewBox="0 0 38 38" xmlns="http://www.w3.org/2000/svg">
+      <circle cx="19" cy="19" r="18" fill="#c0392b" opacity="0.12"/>
+      <circle cx="19" cy="19" r="16" fill="none" stroke="#c0392b" stroke-width="1.5" stroke-dasharray="3 2"/>
+      <line x1="28" y1="9" x2="30" y2="36" stroke="#c0392b" stroke-width="2" stroke-linecap="round"/>
+      <polygon points="19,3 6,13 32,13" fill="#c0392b" opacity="0.85"/>
+      <ellipse cx="19" cy="13" rx="13" ry="1.8" fill="#c0392b"/>
+      <circle cx="18" cy="18" r="4" fill="#c0392b" opacity="0.9"/>
+      <path d="M13,22 L11,36 L25,36 L23,22 Z" fill="#c0392b" opacity="0.8"/>
+      <line x1="23" y1="26" x2="28" y2="23" stroke="#c0392b" stroke-width="2" stroke-linecap="round"/>
+    </svg>
+    <div class="start-title">Henro Walker</div>
+    <div class="start-subtitle">四国八十八ヶ所<br>巡礼の旅へ出発しましょう</div>
+    <button class="start-btn" id="start-btn">お遍路スタート</button>
+  </div>
+</div>
+
+<!-- 到着モーダル -->
+<div id="arrival-overlay" class="arrival-overlay">
+  <div class="arrival-card">
+    <div class="arrival-photo-wrap">
+      <div class="arrival-photo-state" id="arrival-photo-state">写真を読み込み中...</div>
+      <img id="arrival-photo-img" alt="お寺の写真" />
+      <div class="arrival-card-bar">
+        <span class="arrival-badge" id="arrival-badge">到着！🎉</span>
+        <button class="arrival-close" id="arrival-close-btn">✕</button>
+      </div>
+    </div>
+    <div class="arrival-info">
+      <div class="arrival-num" id="arrival-num">第1番</div>
+      <div class="arrival-name" id="arrival-name">霊山寺</div>
+      <div class="arrival-sub" id="arrival-sub">徳島県</div>
+    </div>
+    <div class="arrival-wiki" id="arrival-wiki" style="display:none">
+      写真提供: <a id="arrival-wiki-link" href="https://ja.wikipedia.org" target="_blank" rel="noopener">Wikipedia</a>
+    </div>
+  </div>
+</div>
+
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<script src="app.js?v=9"></script>
+<script src="app.js?v=17"></script>
 </body>
 </html>

@@ -251,12 +251,28 @@ function initMap() {
     }).addTo(map).bindTooltip(`第${t.n}番 ${t.name}（${t.pref}）`, { sticky: true });
   });
 
-  // 現在地マーカー（パルスアニメーション付き）
+  // 現在地マーカー（朱印スタンプ風お遍路さん）
+  const pilgrimSVG = `<svg width="38" height="38" viewBox="0 0 38 38" xmlns="http://www.w3.org/2000/svg">
+    <!-- 背景円 -->
+    <circle cx="19" cy="19" r="18" fill="#c0392b" opacity="0.12"/>
+    <circle cx="19" cy="19" r="16" fill="none" stroke="#c0392b" stroke-width="1.5" stroke-dasharray="3 2"/>
+    <!-- 金剛杖 -->
+    <line x1="28" y1="9" x2="30" y2="36" stroke="#c0392b" stroke-width="2" stroke-linecap="round"/>
+    <!-- 菅笠 -->
+    <polygon points="19,3 6,13 32,13" fill="#c0392b" opacity="0.85"/>
+    <ellipse cx="19" cy="13" rx="13" ry="1.8" fill="#c0392b"/>
+    <!-- 頭 -->
+    <circle cx="18" cy="18" r="4" fill="#c0392b" opacity="0.9"/>
+    <!-- 白衣 -->
+    <path d="M13,22 L11,36 L25,36 L23,22 Z" fill="#c0392b" opacity="0.8"/>
+    <!-- 右腕 -->
+    <line x1="23" y1="26" x2="28" y2="23" stroke="#c0392b" stroke-width="2" stroke-linecap="round"/>
+  </svg>`;
   const icon = L.divIcon({
     className: 'henro-current',
-    html: '<div class="ring"></div><div class="dot"></div>',
-    iconSize: [24, 24],
-    iconAnchor: [12, 12],
+    html: pilgrimSVG,
+    iconSize: [38, 38],
+    iconAnchor: [19, 36],
   });
   currentMarker = L.marker([TEMPLES[0].lat, TEMPLES[0].lng], { icon, zIndexOffset: 1000 }).addTo(map);
 
@@ -336,6 +352,200 @@ function updateUI() {
 
   // localStorageに保存
   localStorage.setItem('henro_steps', String(totalSteps));
+
+  // 到着チェック（複数寺を一度に通過した場合はキューに積む）
+  if (!arrivalInitialized) {
+    lastShownTempleIdx = pos.si;
+    arrivalInitialized = true;
+  } else if (pos.si > lastShownTempleIdx) {
+    for (let i = lastShownTempleIdx + 1; i <= pos.si; i++) {
+      arrivalQueue.push(TEMPLES[i]);
+    }
+    lastShownTempleIdx = pos.si;
+    // モーダルが出ていなければ先頭から表示
+    if (!document.getElementById('arrival-overlay').classList.contains('show')) {
+      showNextArrival();
+    }
+  }
+}
+
+// === 到着モーダル ===
+let lastShownTempleIdx = 0;
+let arrivalInitialized  = false;
+let arrivalQueue        = [];
+
+// 同名の寺院が複数あり曖昧さ回避が必要なものを直接指定
+const WIKI_OVERRIDES = {
+  1:  '霊山寺_(鳴門市)',
+  2:  '極楽寺_(鳴門市)',
+  3:  '金泉寺_(板野町)',
+  4:  '大日寺_(板野町)',
+  5:  '地蔵寺_(板野町)',
+  6:  '安楽寺_(上板町)',
+  9:  '法輪寺_(阿波市)',
+  13: '大日寺_(徳島市)',
+  14: '常楽寺_(徳島市)',
+  15: '国分寺_(徳島市)',
+  16: '観音寺_(徳島市)',
+  20: '鶴林寺_(勝浦町)',
+  22: '平等寺_(阿南市)',
+  28: '大日寺_(香南市)',
+  29: '国分寺_(南国市)',
+  31: '竹林寺_(高知市)',
+  35: '清滝寺_(土佐市)',
+  36: '青龍寺_(土佐市)',
+  41: '龍光寺_(宇和島市)',
+  45: '岩屋寺_(久万高原町)',
+  46: '浄瑠璃寺_(松山市)',
+  47: '八坂寺_(松山市)',
+  48: '西林寺_(松山市)',
+  49: '浄土寺_(松山市)',
+  52: '太山寺_(松山市)',
+  53: '円明寺_(松山市)',
+  54: '延命寺_(今治市)',
+  56: '泰山寺_(今治市)',
+  59: '国分寺_(今治市)',
+  63: '吉祥寺_(西条市)',
+  67: '大興寺_(三豊市)',
+  69: '観音寺_(観音寺市)',
+  70: '本山寺_(三豊市)',
+  72: '曼荼羅寺_(善通寺市)',
+  79: '天皇寺_(香川県)',
+  80: '国分寺_(高松市)',
+  87: '長尾寺_(さぬき市)',
+};
+
+// キャッシュキーにv2プレフィックスを付けて旧キャッシュと分離
+const IMG_CACHE_PREFIX = 'henro_img2_';
+
+async function fetchTemplePhoto(temple) {
+  const cacheKey = IMG_CACHE_PREFIX + temple.n;
+  const stored = localStorage.getItem(cacheKey);
+  if (stored !== null) return stored === '__none__' ? null : stored;
+
+  const ctrl  = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 8000);
+  try {
+    let wikiTitle = WIKI_OVERRIDES[temple.n] || null;
+
+    if (!wikiTitle) {
+      // openSearch でタイトル候補を取得（タイトル一致検索）
+      const sUrl  = `https://ja.wikipedia.org/w/api.php?action=opensearch&search=${encodeURIComponent(temple.name)}&limit=8&format=json&origin=*`;
+      const sRes  = await fetch(sUrl, { signal: ctrl.signal });
+      const sTitles = (await sRes.json())[1] || [];
+
+      const skipWords    = ['一覧', '曖昧さ', '四国八十八', 'お遍路'];
+      const shikokuHints = ['徳島', '高知', '愛媛', '香川', '鳴門', '板野', '阿波', '吉野川',
+        '南国', '土佐', '宇和島', '松山', '今治', '西条', '三豊', '善通寺',
+        '観音寺市', '高松', 'さぬき', temple.pref];
+
+      for (const t of sTitles) {
+        if (!t.includes(temple.name)) continue;
+        if (skipWords.some(w => t.includes(w))) continue;
+        if (!wikiTitle) wikiTitle = t;
+        if (shikokuHints.some(h => t.includes(h))) { wikiTitle = t; break; }
+      }
+    }
+
+    if (!wikiTitle) {
+      clearTimeout(timer);
+      localStorage.setItem(cacheKey, '__none__');
+      return null;
+    }
+
+    // 決定したタイトルのサムネイルを取得
+    const iUrl  = `https://ja.wikipedia.org/w/api.php?action=query&titles=${encodeURIComponent(wikiTitle)}&prop=pageimages&format=json&pithumbsize=600&origin=*`;
+    const iRes  = await fetch(iUrl, { signal: ctrl.signal });
+    const iData = await iRes.json();
+    clearTimeout(timer);
+
+    const page = Object.values(iData.query.pages)[0];
+    if (page?.thumbnail?.source) {
+      localStorage.setItem(cacheKey, page.thumbnail.source);
+      return page.thumbnail.source;
+    }
+    localStorage.setItem(cacheKey, '__none__');
+    return null;
+  } catch (e) {
+    clearTimeout(timer);
+    if (e.name !== 'AbortError') console.warn(`写真取得失敗 第${temple.n}番:`, e.message);
+    return null;
+  }
+}
+
+function showNextArrival() {
+  if (arrivalQueue.length === 0) return;
+  showArrivalModal(arrivalQueue.shift());
+}
+
+function showArrivalModal(temple) {
+  const overlay   = document.getElementById('arrival-overlay');
+  const prefColor = PREF_COLORS[temple.pref] || '#c0392b';
+
+  // バッジ：キューに残りがあれば件数を表示
+  const badge = document.getElementById('arrival-badge');
+  badge.textContent = arrivalQueue.length > 0
+    ? `到着！🎉  あと ${arrivalQueue.length} ヶ所`
+    : '到着！🎉';
+
+  const numEl = document.getElementById('arrival-num');
+  numEl.textContent = `第${temple.n}番`;
+  numEl.style.color = prefColor;
+  document.getElementById('arrival-name').textContent = temple.name;
+  document.getElementById('arrival-sub').textContent  = `${temple.pref}県`;
+
+  const img      = document.getElementById('arrival-photo-img');
+  const stateEl  = document.getElementById('arrival-photo-state');
+  const wikiEl   = document.getElementById('arrival-wiki');
+  img.style.display     = 'none';
+  img.src               = '';
+  stateEl.innerHTML     = '写真を読み込み中...';
+  stateEl.style.display = '';
+  wikiEl.style.display  = 'none';
+
+  overlay.classList.add('show');
+  document.getElementById('arrival-close-btn').onclick = closeArrivalModal;
+  overlay.onclick = (e) => { if (e.target === overlay) closeArrivalModal(); };
+
+  fetchTemplePhoto(temple).then(src => {
+    stateEl.style.display = 'none';
+    if (src) {
+      img.src    = src;
+      img.onload = () => {
+        img.style.display    = 'block';
+        wikiEl.style.display = '';
+        const wikiLink = document.getElementById('arrival-wiki-link');
+        wikiLink.href = `https://ja.wikipedia.org/w/index.php?search=${encodeURIComponent('第'+temple.n+'番 '+temple.name)}`;
+      };
+      img.onerror = () => {
+        stateEl.innerHTML     = '<span style="font-size:40px;opacity:0.2">⛩</span>';
+        stateEl.style.display = '';
+      };
+    } else {
+      stateEl.innerHTML     = '<span style="font-size:40px;opacity:0.2">⛩</span>';
+      stateEl.style.display = '';
+    }
+  });
+}
+
+function closeArrivalModal() {
+  document.getElementById('arrival-overlay').classList.remove('show');
+  // キューに次のお寺があればアニメーション後に表示
+  if (arrivalQueue.length > 0) {
+    setTimeout(showNextArrival, 380);
+  }
+}
+
+// --- スタート画面 ---
+function startHenro() {
+  localStorage.setItem('henro_started', '1');
+  const startEl = document.getElementById('start-overlay');
+  startEl.classList.add('hide');
+  // フェードアウト後に第1番 霊山寺の到着モーダルを表示
+  setTimeout(() => {
+    startEl.style.display = 'none';
+    showArrivalModal(TEMPLES[0]);
+  }, 420);
 }
 
 // --- 履歴管理 ---
@@ -350,10 +560,16 @@ function loadHistory() {
   }
 }
 
-function saveHistoryEntry(steps, label) {
+function todayStr() {
   const now = new Date();
-  const date = `${now.getFullYear()}/${String(now.getMonth()+1).padStart(2,'0')}/${String(now.getDate()).padStart(2,'0')}`;
-  stepHistory.unshift({ date, steps, label });
+  return `${now.getFullYear()}/${String(now.getMonth()+1).padStart(2,'0')}/${String(now.getDate()).padStart(2,'0')}`;
+}
+
+function saveHistoryEntry(steps, label, date) {
+  const d = date || todayStr();
+  stepHistory.unshift({ date: d, steps, label });
+  // 日付の新しい順に並べ替え（同日は入力順を保持）
+  stepHistory.sort((a, b) => b.date.localeCompare(a.date));
   if (stepHistory.length > 200) stepHistory = stepHistory.slice(0, 200);
   localStorage.setItem(HISTORY_KEY, JSON.stringify(stepHistory));
   renderHistory();
@@ -378,12 +594,32 @@ function renderHistory() {
 // --- 入力ハンドラ ---
 function addManual() {
   const val = parseInt(document.getElementById('inp').value) || 0;
-  if (val > 0) {
+  if (val <= 0) return;
+
+  const dateRaw = document.getElementById('inp-date').value;
+  const date = dateRaw ? dateRaw.replace(/-/g, '/') : todayStr();
+
+  // 同一日付の既存エントリを検索
+  const existingIdx = stepHistory.findIndex(item => item.date === date);
+
+  if (existingIdx !== -1) {
+    // 修正扱い：古い歩数を引いて新しい歩数に置き換え
+    const oldSteps = stepHistory[existingIdx].steps;
+    totalSteps = totalSteps - oldSteps + val;
+    stepHistory[existingIdx].steps = val;
+    stepHistory[existingIdx].label = '修正';
+    stepHistory.sort((a, b) => b.date.localeCompare(a.date));
+    localStorage.setItem(HISTORY_KEY, JSON.stringify(stepHistory));
+    localStorage.setItem('henro_steps', String(totalSteps));
+    renderHistory();
+  } else {
+    // 新規追加
     totalSteps += val;
-    document.getElementById('inp').value = '';
-    saveHistoryEntry(val, '手動入力');
-    updateUI();
+    saveHistoryEntry(val, '手動入力', date);
   }
+
+  document.getElementById('inp').value = '';
+  updateUI();
 }
 
 
@@ -391,10 +627,20 @@ function resetAll() {
   if (!confirm('歩数と入力履歴をすべてリセットしますか？\nこの操作は元に戻せません。')) return;
   totalSteps = 0;
   stepHistory = [];
+  arrivalInitialized = false;
+  lastShownTempleIdx  = 0;
+  arrivalQueue        = [];
+  closeArrivalModal();
   localStorage.removeItem('henro_steps');
   localStorage.removeItem(HISTORY_KEY);
+  localStorage.removeItem('henro_started');
   renderHistory();
   updateUI();
+  // スタート画面を再表示
+  const startEl = document.getElementById('start-overlay');
+  startEl.classList.remove('hide');
+  startEl.classList.add('show');
+  document.getElementById('start-btn').onclick = startHenro;
 }
 
 // --- 初期化 ---
@@ -404,6 +650,23 @@ loadHistory();
 initMap();
 updateUI();
 renderHistory();
+
+// 日付入力のデフォルトを今日に設定
+const _now = new Date();
+document.getElementById('inp-date').value =
+  `${_now.getFullYear()}-${String(_now.getMonth()+1).padStart(2,'0')}-${String(_now.getDate()).padStart(2,'0')}`;
+
+// スタート画面の制御
+const _started = localStorage.getItem('henro_started');
+if (!_started && totalSteps === 0 && stepHistory.length === 0) {
+  // 初回起動 → スタート画面を表示
+  const startEl = document.getElementById('start-overlay');
+  startEl.classList.add('show');
+  document.getElementById('start-btn').addEventListener('click', startHenro);
+} else {
+  // 既に開始済み（またはデータあり）→ フラグだけ立てて画面は出さない
+  if (!_started) localStorage.setItem('henro_started', '1');
+}
 
 // Service Worker 登録
 if ('serviceWorker' in navigator) {

@@ -1,6 +1,6 @@
 // sw.js — Service Worker（オフライン対応）
 
-const CACHE = 'henro-v2';
+const CACHE = 'henro-v3';
 const ASSETS = [
   './',
   './index.html',

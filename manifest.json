@@ -1,7 +1,7 @@
 {
-  "name": "仮想お遍路 — 四国八十八ヶ所",
-  "short_name": "仮想お遍路",
-  "description": "歩数計と連携して四国八十八ヶ所を仮想巡礼するアプリ",
+  "name": "Henro Walker — 四国八十八ヶ所",
+  "short_name": "Henro Walker",
+  "description": "歩数を記録して四国八十八ヶ所を仮想巡礼するアプリ",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
