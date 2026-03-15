@@ -207,22 +207,50 @@ const TOTAL_KM = CUM_DIST[87]; // 約1,181km
 
 // --- 現在位置計算（km → lat/lng） ---
 function getPosition(km) {
-  if (km <= 0) return { lat: TEMPLES[0].lat, lng: TEMPLES[0].lng, si: 0, ni: 1 };
-  if (km >= TOTAL_KM) return { lat: TEMPLES[87].lat, lng: TEMPLES[87].lng, si: 87, ni: null };
+  if (km <= 0) {
+    const p = routeLatLng(0, TEMPLES[0].lat, TEMPLES[0].lng);
+    return { lat: p[0], lng: p[1], si: 0, ni: 1 };
+  }
+  if (km >= TOTAL_KM) {
+    const p = routeLatLng(1, TEMPLES[87].lat, TEMPLES[87].lng);
+    return { lat: p[0], lng: p[1], si: 87, ni: null };
+  }
   for (let i = 1; i < CUM_DIST.length; i++) {
     if (km < CUM_DIST[i]) {
       const t = (km - CUM_DIST[i-1]) / (CUM_DIST[i] - CUM_DIST[i-1]);
-      return {
-        lat: TEMPLES[i-1].lat + t * (TEMPLES[i].lat - TEMPLES[i-1].lat),
-        lng: TEMPLES[i-1].lng + t * (TEMPLES[i].lng - TEMPLES[i-1].lng),
-        si: i-1, ni: i,
-      };
+      const fLat = TEMPLES[i-1].lat + t * (TEMPLES[i].lat - TEMPLES[i-1].lat);
+      const fLng = TEMPLES[i-1].lng + t * (TEMPLES[i].lng - TEMPLES[i-1].lng);
+      const p = routeLatLng(km / TOTAL_KM, fLat, fLng);
+      return { lat: p[0], lng: p[1], si: i-1, ni: i };
     }
   }
   return { lat: TEMPLES[87].lat, lng: TEMPLES[87].lng, si: 87, ni: null };
 }
 
+// ルート上の位置を返す（ルート未ロード時は直線フォールバック）
+function routeLatLng(ratio, fallLat, fallLng) {
+  if (!routePoints || !routeCumDist || routeTotalKm === 0) return [fallLat, fallLng];
+  const roadKm = ratio * routeTotalKm;
+  if (roadKm <= 0) return [routePoints[0][0], routePoints[0][1]];
+  if (roadKm >= routeTotalKm) return [routePoints[routePoints.length-1][0], routePoints[routePoints.length-1][1]];
+  // 二分探索
+  let lo = 0, hi = routePoints.length - 1;
+  while (lo + 1 < hi) {
+    const mid = (lo + hi) >> 1;
+    if (routeCumDist[mid] <= roadKm) lo = mid; else hi = mid;
+  }
+  const t = (roadKm - routeCumDist[lo]) / (routeCumDist[hi] - routeCumDist[lo]);
+  return [
+    routePoints[lo][0] + t * (routePoints[hi][0] - routePoints[lo][0]),
+    routePoints[lo][1] + t * (routePoints[hi][1] - routePoints[lo][1]),
+  ];
+}
+
 let map, currentMarker, routeLine;
+// 道路ルート索引（ロード後にセット）
+let routePoints = null;   // [[lat, lng], ...]
+let routeCumDist = null;  // 各点までの累計距離(km)
+let routeTotalKm = 0;
 
 // --- 地図初期化（Leaflet） ---
 function initMap() {
@@ -321,6 +349,26 @@ function updateRouteDisplay(coords) {
   routeLine = L.polyline(coords, {
     color: '#e07840', weight: 2.5, opacity: 0.8,
   }).addTo(map);
+  buildRouteIndex(coords);
+  // ルートロード後にマーカーを正確な位置へ移動
+  const pos = getPosition(totalSteps * 0.00075);
+  currentMarker.setLatLng([pos.lat, pos.lng]);
+}
+
+function buildRouteIndex(coords) {
+  routePoints = coords;
+  const cum = [0];
+  for (let i = 1; i < coords.length; i++) {
+    const [lat1, lng1] = coords[i-1];
+    const [lat2, lng2] = coords[i];
+    const R = 6371;
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLng = (lng2 - lng1) * Math.PI / 180;
+    const a = Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLng/2)**2;
+    cum.push(cum[i-1] + 2 * R * Math.asin(Math.sqrt(a)));
+  }
+  routeCumDist = cum;
+  routeTotalKm = cum[cum.length - 1];
 }
 
 // --- UI更新 ---
