@@ -132,9 +132,65 @@
 
     .note {
       text-align: center; font-size: 10px; color: var(--muted);
-      padding: 0 16px 16px;
+      padding: 0 16px 8px;
       line-height: 1.6;
     }
+
+    .history-wrap {
+      margin: 0 16px 12px;
+      background: var(--surface);
+      border-radius: var(--radius);
+      overflow: hidden;
+      border: 0.5px solid var(--border);
+    }
+    .history-header {
+      padding: 8px 14px;
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--muted);
+      letter-spacing: 0.04em;
+      border-bottom: 0.5px solid var(--border);
+    }
+    .history-list {
+      max-height: 200px;
+      overflow-y: auto;
+    }
+    .history-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 8px 14px;
+      border-bottom: 0.5px solid var(--border);
+      font-size: 12px;
+      gap: 8px;
+    }
+    .history-item:last-child { border-bottom: none; }
+    .history-date { color: var(--muted); white-space: nowrap; }
+    .history-label { color: var(--muted); font-size: 10px; flex: 1; text-align: center; }
+    .history-steps { font-weight: 600; white-space: nowrap; }
+    .history-empty {
+      padding: 20px;
+      text-align: center;
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    .reset-wrap {
+      text-align: center;
+      padding: 4px 16px 20px;
+    }
+    .reset-btn {
+      background: none;
+      border: none;
+      color: #c0392b;
+      font-size: 11px;
+      opacity: 0.5;
+      cursor: pointer;
+      padding: 8px 20px;
+      font-family: var(--font);
+      text-decoration: underline;
+    }
+    .reset-btn:active { opacity: 1; }
 
     .henro-current { background: none; border: none; }
     .henro-current .dot {
@@ -201,14 +257,23 @@
   <input type="number" id="inp" placeholder="歩数を入力..." min="0" inputmode="numeric" />
   <button onclick="addManual()">追加</button>
   <button id="sync-btn" onclick="syncSteps()">ヘルスケア同期</button>
-  <button onclick="resetAll()">リセット</button>
 </div>
 <p class="note">
-  ※ iOSでは「ヘルスケア」アプリのデータと連携予定（現在はデモ値）。<br>
-  ネイティブアプリ化するとApple HealthKit / Google Health Connectに接続できます。
+  ※ ヘルスケア同期は現在デモ値。ネイティブアプリ化でHealthKit / Health Connect連携予定。
 </p>
 
+<div class="history-wrap">
+  <div class="history-header">入力履歴</div>
+  <div id="history-list" class="history-list">
+    <div class="history-empty">まだ記録がありません</div>
+  </div>
+</div>
+
+<div class="reset-wrap">
+  <button class="reset-btn" onclick="resetAll()">記録をすべてリセット</button>
+</div>
+
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<script src="app.js?v=6"></script>
+<script src="app.js?v=7"></script>
 </body>
 </html>

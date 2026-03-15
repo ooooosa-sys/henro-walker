@@ -334,12 +334,50 @@ function updateUI() {
   localStorage.setItem('henro_steps', String(totalSteps));
 }
 
+// --- 履歴管理 ---
+const HISTORY_KEY = 'henro_history';
+let stepHistory = [];
+
+function loadHistory() {
+  try {
+    stepHistory = JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]');
+  } catch(e) {
+    stepHistory = [];
+  }
+}
+
+function saveHistoryEntry(steps, label) {
+  const now = new Date();
+  const date = `${now.getFullYear()}/${String(now.getMonth()+1).padStart(2,'0')}/${String(now.getDate()).padStart(2,'0')}`;
+  stepHistory.unshift({ date, steps, label });
+  if (stepHistory.length > 200) stepHistory = stepHistory.slice(0, 200);
+  localStorage.setItem(HISTORY_KEY, JSON.stringify(stepHistory));
+  renderHistory();
+}
+
+function renderHistory() {
+  const list = document.getElementById('history-list');
+  if (!list) return;
+  if (stepHistory.length === 0) {
+    list.innerHTML = '<div class="history-empty">まだ記録がありません</div>';
+    return;
+  }
+  list.innerHTML = stepHistory.map(item => `
+    <div class="history-item">
+      <span class="history-date">${item.date}</span>
+      <span class="history-label">${item.label}</span>
+      <span class="history-steps">+${item.steps.toLocaleString()} 歩</span>
+    </div>
+  `).join('');
+}
+
 // --- 入力ハンドラ ---
 function addManual() {
   const val = parseInt(document.getElementById('inp').value) || 0;
   if (val > 0) {
     totalSteps += val;
     document.getElementById('inp').value = '';
+    saveHistoryEntry(val, '手動入力');
     updateUI();
   }
 }
@@ -350,16 +388,11 @@ async function syncSteps() {
   btn.disabled = true;
   btn.textContent = '取得中...';
 
-  // 本番実装メモ:
-  // iOS: window.webkit.messageHandlers.getHealthKitSteps.postMessage({})
-  //      → Swift側でHKStatisticsCollectionQuery を実行し、JSに返す
-  // Android: Android.getHealthConnectSteps()
-  //      → Kotlin側でHealthConnectClient.readRecords を実行し、JSに返す
-
   // ↓ デモ: ランダムな歩数（3,000〜12,000歩）
   await new Promise(r => setTimeout(r, 600));
   const todaySteps = Math.floor(Math.random() * 9000) + 3000;
   totalSteps += todaySteps;
+  saveHistoryEntry(todaySteps, 'ヘルスケア同期');
   updateUI();
 
   btn.textContent = `+${todaySteps.toLocaleString()}歩 完了！`;
@@ -370,17 +403,22 @@ async function syncSteps() {
 }
 
 function resetAll() {
-  if (!confirm('記録をリセットしますか？')) return;
+  if (!confirm('歩数と入力履歴をすべてリセットしますか？\nこの操作は元に戻せません。')) return;
   totalSteps = 0;
+  stepHistory = [];
   localStorage.removeItem('henro_steps');
+  localStorage.removeItem(HISTORY_KEY);
+  renderHistory();
   updateUI();
 }
 
 // --- 初期化 ---
 let totalSteps = parseInt(localStorage.getItem('henro_steps') || '0');
+loadHistory();
 
 initMap();
 updateUI();
+renderHistory();
 
 // Service Worker 登録
 if ('serviceWorker' in navigator) {
